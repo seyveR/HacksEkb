@@ -10,6 +10,7 @@ import pymorphy2
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
+from django.http import FileResponse, HttpResponseNotFound
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from navec import Navec
@@ -158,6 +159,7 @@ def process_dataframe(df, file_name):
 
 
 def index(request):
+    context = {}
     if request.method == 'POST':
         file = request.FILES['csv_file']
         file_name = file.name
@@ -166,28 +168,36 @@ def index(request):
             for chunk in file.chunks():
                 destination.write(chunk)
 
-        # Читаем Excel файл и преобразуем его в CSV
+    
         data_xls = pd.read_excel(file_path, index_col=None)
         csv_file_path = file_path.replace(".xlsx", ".csv")
         data_xls.to_csv(csv_file_path, encoding='utf-8', index=False)
 
-        # Обрабатываем данные с помощью вашего кода нейронной сети.
         df = pd.read_csv(csv_file_path, sep=';', on_bad_lines='skip', encoding='utf-8')
         df_processed = process_dataframe(df, csv_file_path)
 
         csv = pd.read_csv("newData.csv")
         csv.to_excel("newData.xlsx", index=False)
   
+        request.session['file_processed'] = True
+        context['download_link'] = 'URL для скачивания'
 
         return render(request, 'website/index.html')
 
-    return render(request, 'website/index.html')
+    return render(request, 'website/index.html', context)
 
 from django.http import FileResponse
 
 def download(request):
-    file = open('newData.xlsx', 'rb')
-    response = FileResponse(file)
-    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    response['Content-Disposition'] = 'attachment; filename=newData.xlsx'
-    return response
+    
+    if request.session.get('file_processed', False):
+        file = open('newData.xlsx', 'rb')
+        response = FileResponse(file)
+        response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response['Content-Disposition'] = 'attachment; filename=newData.xlsx'
+        
+    
+        del request.session['file_processed']
+        return response
+
+    return HttpResponseNotFound()
